@@ -113,5 +113,9 @@ attention-weighted pooling does **not** improve DoM steering in either setting �
 across harvest region (last/prompt/response/full), pooling (uniform vs
 attention), attention importance (same-layer/all-layer-mean/max-head), BOS
 handling, and apply location, the canonical single-last-token uniform recipe is
-never beaten. Both baselines reproduce (refusal bypass 0.97→0.00 @L10; CAA
-sycophancy induction @L12). Metrics + plots under `results/`.
+never beaten. Reproduction fidelity (see `REPORT.md` §1): **refusal** reproduces
+the mechanism faithfully (bypass 0.97→0.00 @L10, scale-invariant ablation); **CAA
+sycophancy** reproduces only the *direction* of the effect (monotonic @L12) and
+materially undershoots the paper's Fig. 7 magnitude, most likely due to
+transformer_lens weight-processing rescaling activations. Metrics + plots under
+`results/`.

@@ -31,23 +31,47 @@ non-discriminative content.
 - All cross-condition comparisons **unit-normalise** the steering vector, so we
   compare *direction quality at matched perturbation magnitude*, not vector norm.
 
-## 1. Reproductions (baselines)
+## 1. Reproduction fidelity — measured against the papers' reported numbers
 
-**Refusal (layer 10).** No-steer refusal: harmful **0.97**, harmless **0.00**.
-- *Ablation* (project the L10 last-token DoM direction out of every residual
-  point, all layers): harmful refusal **0.97 → 0.00** — refusal fully bypassed.
-- *Addition* (add the direction on harmless prompts): refusal **0.00 → 0.41
-  (+4) → 0.97 (+8) → 1.00 (+16)** — refusal induced.
-- *Layer sweep* (ablation effectiveness): L10 is uniquely the refusal direction —
-  harmful refusal after ablation by source layer: L8 0.88, **L10 0.04**, L12 0.75,
-  L14 0.83, L16 0.88, L20 0.79. Faithfully reproduces "a single direction."
+**Refusal (Arditi et al.) — faithful reproduction of the mechanism.**
+Their claim: a single direction whose *ablation* stops refusal of harmful prompts
+and whose *addition* elicits refusal on harmless prompts (metrics: refusal
+substring + Llama-Guard-2 safety; for Llama-2-7B they report e.g. 22.6% attack
+success after weight-orthogonalisation *with the default safety system prompt*).
+- My no-steer refusal: harmful **0.97**, harmless **0.00**.
+- *Ablation* (project the L10 direction out of every residual point, all layers):
+  harmful **0.97 → 0.00**.
+- *Addition*: harmless **0.00 → 0.41 (+4) → 0.97 (+8) → 1.00 (+16)**.
+- Layer sweep: L10 uniquely the refusal direction (post-ablation harmful refusal
+  L8 0.88, **L10 0.04**, L12 0.75, L14 0.83).
 
-**CAA sycophancy (layer 12).** Adding the L12 last-token DoM direction shifts
-`P(sycophantic)` monotonically: **0.49 (−2) → 0.69 (0) → 0.74 (+2)**, saturating
-then degenerating at large |coef| (the model breaks → ~0.57). Layer sweep picks
-L12 (swing 0.24) as most sensitive, adjacent to CAA's L13.
+  *Caveats:* I evaluate with the substring metric and **no system prompt** (the
+  easier regime), so my complete bypass is **not** directly comparable to their
+  22.6%-ASR (with-system-prompt, Llama-Guard) figure. But ablation is
+  *scale-invariant* (projects out a direction), so this reproduction is robust to
+  activation-scale differences and cleanly reproduces their headline mechanism.
 
-Both canonical DoM results reproduce. → `results/{refusal,caa}/*baseline*`.
+**CAA sycophancy (Rimsky et al.) — qualitative/directional reproduction only;
+magnitude NOT reproduced.** Their Fig. 7 (Llama-2-7B-chat, layer 15): P(sycophantic
+answer) ≈ **0.20 / 0.50 / 0.80** at multiplier −1 / 0 / +1 (≈60-pt swing).
+- Mine (raw vectors, integer multipliers): at their layer 15, **0.66 / 0.69 / 0.72**
+  (−1/0/+1); at my most-sensitive layer 12, 0.61 / 0.69 / 0.74 — a ~10–20-pt swing
+  around a **0.69** baseline (vs their ~0.50). Pushing harder (unit-norm, large
+  coef) reaches ~0.49–0.75 before the model degenerates — still short of 0.20–0.80.
+- *Honest verdict:* I reproduce the **sign and monotonicity** (subtract → less
+  sycophantic, add → more) but **materially undershoot** the published effect, and
+  my baseline and best-layer (12 vs 15) differ.
+- *Most likely cause:* I load the model with `transformer_lens` weight-processing
+  (LayerNorm folding/centering), which rescales the residual stream; my raw DoM
+  vectors have norm ≈2, so `multiplier × vector` is a small perturbation. CAA
+  builds vectors from **raw HF activations** (larger scale), so equal multipliers
+  move the model much more. Prompt-format/baseline differences compound this.
+  Switching to `from_pretrained_no_processing` (raw-HF scale) is the untested fix.
+
+**Bearing on the main result:** the attention-weighting question is a *controlled
+internal* comparison (same model/layer/data/metric/magnitude; only pooling
+differs), so it is unaffected by how closely the absolute magnitudes match the
+papers. → `results/{refusal,caa}/*`.
 
 ## 2. The attention-weighting experiment
 
