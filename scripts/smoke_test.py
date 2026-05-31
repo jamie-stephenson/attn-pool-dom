@@ -71,7 +71,7 @@ def main() -> None:
     hooks = steering_hooks(v / v.norm(), steer)
     with model.hooks(fwd_hooks=hooks):
         out = model.generate(harmless, max_new_tokens=24, do_sample=False, verbose=False)
-    print("[harmless + (harmful-dir)] ->", out[len(harmless):].strip()[:120]!r)
+    print("[harmless + (harmful-dir)] ->", repr(out[len(harmless):].strip()[:120]))
     print("SMOKE OK")
 
 
