@@ -45,10 +45,10 @@ def letter_ids(model) -> dict[str, int]:
 
 
 @torch.no_grad()
-def eval_mc(model, items, lids, direction, layer, coef, batch_size=16) -> float:
+def eval_mc(model, items, lids, direction, layer, coef, batch_size=16, apply="all") -> float:
     """Mean P(matching) / (P(matching)+P(not_matching)) over held-out items."""
     hooks = (
-        steering_hooks(direction, SteerConfig(layers=(layer,), mode="add", coef=coef))
+        steering_hooks(direction, SteerConfig(layers=(layer,), mode="add", coef=coef, apply=apply))
         if coef != 0
         else []
     )
@@ -89,6 +89,7 @@ def main() -> None:
     ap.add_argument("--coefs", type=float, nargs="+", default=[-3, -2, -1, 0, 1, 2, 3])
     ap.add_argument("--specs", default="baseline", choices=["baseline", "sweep"])
     ap.add_argument("--layer-sweep", default="", help="e.g. '8,10,12,13,14,16' to pick best layer")
+    ap.add_argument("--apply-sweep", action="store_true", help="compare apply=all vs last")
     ap.add_argument("--unit", action="store_true", help="unit-normalise directions (fair compare)")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default="results/caa")
@@ -112,6 +113,16 @@ def main() -> None:
             swing = curve[2] - curve[-2]
             print(f"L{L:2d} |v|={d.norm().item():5.2f} swing={swing:+.3f} | "
                   + " ".join(f"{c:+g}:{curve[c]:.3f}" for c in sc))
+        return
+
+    if args.apply_sweep:
+        raw = build_dom_vectors(model, pos, neg, args.layer, [PoolSpec("last", "uniform")], args.batch_size)[0]["last/uniform"]
+        d = raw / raw.norm() if args.unit else raw
+        print("=== apply-location sweep (last/uniform) ===")
+        for ap_ in ("all", "last"):
+            curve = {c: eval_mc(model, data.val, lids, d, args.layer, c, args.batch_size, apply=ap_)
+                     for c in args.coefs}
+            print(f"apply={ap_:5s} | " + "  ".join(f"{c:+g}:{p:.3f}" for c, p in curve.items()))
         return
 
     specs = spec_set(args.specs)

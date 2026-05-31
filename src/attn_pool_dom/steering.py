@@ -53,15 +53,17 @@ def make_steer_hook(direction: Tensor, cfg: SteerConfig, prompt_len: int | None 
             update = cfg.coef * v.to(resid.dtype)
             update = update.expand_as(resid).clone()
 
-        # position masking
-        if cfg.apply != "all" and seq > 1 and prompt_len is not None:
+        # position masking (only meaningful on a multi-token pass)
+        if cfg.apply != "all" and seq > 1:
             keep = torch.zeros(seq, dtype=torch.bool, device=resid.device)
-            if cfg.apply == "prompt":
+            if cfg.apply == "last":
+                keep[-1] = True  # needs only seq, not prompt_len
+            elif cfg.apply == "prompt" and prompt_len is not None:
                 keep[:prompt_len] = True
-            elif cfg.apply == "response":
+            elif cfg.apply == "response" and prompt_len is not None:
                 keep[prompt_len:] = True
-            elif cfg.apply == "last":
-                keep[-1] = True
+            else:
+                keep[:] = True  # no boundary info -> fall back to all
             update = update * keep[None, :, None]
         return resid + update
 
