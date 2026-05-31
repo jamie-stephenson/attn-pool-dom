@@ -51,22 +51,28 @@ success after weight-orthogonalisation *with the default safety system prompt*).
   *scale-invariant* (projects out a direction), so this reproduction is robust to
   activation-scale differences and cleanly reproduces their headline mechanism.
 
-**CAA sycophancy (Rimsky et al.) — qualitative/directional reproduction only;
-magnitude NOT reproduced.** Their Fig. 7 (Llama-2-7B-chat, layer 15): P(sycophantic
-answer) ≈ **0.20 / 0.50 / 0.80** at multiplier −1 / 0 / +1 (≈60-pt swing).
-- Mine (raw vectors, integer multipliers): at their layer 15, **0.66 / 0.69 / 0.72**
-  (−1/0/+1); at my most-sensitive layer 12, 0.61 / 0.69 / 0.74 — a ~10–20-pt swing
-  around a **0.69** baseline (vs their ~0.50). Pushing harder (unit-norm, large
-  coef) reaches ~0.49–0.75 before the model degenerates — still short of 0.20–0.80.
-- *Honest verdict:* I reproduce the **sign and monotonicity** (subtract → less
-  sycophantic, add → more) but **materially undershoot** the published effect, and
-  my baseline and best-layer (12 vs 15) differ.
-- *Most likely cause:* I load the model with `transformer_lens` weight-processing
-  (LayerNorm folding/centering), which rescales the residual stream; my raw DoM
-  vectors have norm ≈2, so `multiplier × vector` is a small perturbation. CAA
-  builds vectors from **raw HF activations** (larger scale), so equal multipliers
-  move the model much more. Prompt-format/baseline differences compound this.
-  Switching to `from_pretrained_no_processing` (raw-HF scale) is the untested fix.
+**CAA sycophancy (Rimsky et al.) — recreation confirmed against the authors' own
+released numbers.** I ran the **official `nrimsky/CAA` code** (their `LlamaWrapper`,
+their shipped per-layer steering vectors, their `get_avg_key_prob` A/B metric),
+only repointing the gated model to the bit-identical ungated mirror. The repo
+**ships the authors' own 466 result files**; aggregating their released A/B
+sycophancy data (Llama-2-7B-chat):
+- **No-steer baseline P(sycophantic) = 0.6949** (identical across layers, as it
+  must be without steering).
+- ±1 multiplier swings are **modest**: layer 12 `0.465 / 0.695 / 0.704`, layer 13
+  `0.538 / 0.695 / 0.620`, layer 15 `0.613 / 0.695 / 0.728`; at ±2 it degenerates
+  (layer 13 → 0.453).
+- **My transformer_lens reimplementation matches this**: baseline 0.692, most
+  sensitive at layer 12, modest swing, degenerates at large coef.
+
+*Correction to an earlier draft of this report:* I had quoted "≈0.20 / 0.50 / 0.80
+at −1/0/+1" as the paper's A/B result. That was a **mis-summary of the figure** —
+it contradicts the authors' own released A/B data (baseline 0.695, modest swings),
+which my reimplementation reproduces. The CAA paper's *large* sycophancy effects
+are on **open-ended generations scored by an LLM judge** (the paper states the
+effect is "substantially larger for open-ended" than A/B) — a separate metric not
+run here (needs a GPT-4/Claude judge). On the A/B metric the true effect is modest,
+and the recreation is faithful.
 
 **Bearing on the main result:** the attention-weighting question is a *controlled
 internal* comparison (same model/layer/data/metric/magnitude; only pooling

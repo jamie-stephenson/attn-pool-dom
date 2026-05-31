@@ -115,7 +115,8 @@ attention), attention importance (same-layer/all-layer-mean/max-head), BOS
 handling, and apply location, the canonical single-last-token uniform recipe is
 never beaten. Reproduction fidelity (see `REPORT.md` §1): **refusal** reproduces
 the mechanism faithfully (bypass 0.97→0.00 @L10, scale-invariant ablation); **CAA
-sycophancy** reproduces only the *direction* of the effect (monotonic @L12) and
-materially undershoots the paper's Fig. 7 magnitude, most likely due to
-transformer_lens weight-processing rescaling activations. Metrics + plots under
-`results/`.
+sycophancy** A/B reproduction is **confirmed against the authors' own released
+numbers** — running the official `nrimsky/CAA` code gives baseline P(sycophantic)
+= 0.695 and modest ±1 swings (best ~layer 12), which my reimplementation matches
+(0.692). (The CAA paper's large effects are on LLM-judged *open-ended* generation,
+a separate metric, not the A/B probability.) Metrics + plots under `results/`.
