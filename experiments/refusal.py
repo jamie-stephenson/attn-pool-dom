@@ -26,7 +26,7 @@ from attn_pool_dom.model import ModelConfig, format_chat, load_model
 from attn_pool_dom.pipeline import PoolSpec, build_dom_vectors
 from attn_pool_dom.steering import SteerConfig, ablation_hooks, steering_hooks
 
-DEFAULT_LAYER = 14
+DEFAULT_LAYER = 10  # the refusal direction by held-out ablation sweep (Arditi-style)
 
 
 def to_examples(instructions: list[str]) -> list[Example]:
