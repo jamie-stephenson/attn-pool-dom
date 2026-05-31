@@ -29,19 +29,15 @@ class ModelConfig:
 
 
 def load_model(cfg: ModelConfig) -> HookedTransformer:
-    """Load a HookedTransformer with attention patterns available for caching."""
+    """Load a HookedTransformer. Attention `hook_pattern` is available by default,
+    which is what attention-weighted pooling needs."""
     dtype = getattr(torch, cfg.dtype)
-    model = HookedTransformer.from_pretrained(
-        cfg.name,
-        dtype=dtype,
-        device=cfg.device,
-        default_padding_side="left",
-    )
+    model = HookedTransformer.from_pretrained(cfg.name, dtype=dtype, device=cfg.device)
     model.eval()
-    # We need attention patterns for attention-weighted pooling; ensure the
-    # implementation exposes them (transformer_lens stores `pattern` hooks).
-    model.set_use_attn_result(False)
-    model.cfg.use_attn_in = False
+    # Left-pad by default so batched generation aligns on the last token; the
+    # harvest pass overrides to right padding where region masks are simpler.
+    if model.tokenizer is not None:
+        model.tokenizer.padding_side = "left"
     return model
 
 
