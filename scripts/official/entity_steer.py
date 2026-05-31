@@ -11,7 +11,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 MODEL = "NousResearch/Llama-2-7b-chat-hf"
 DEV = "cuda"
 L = 12
-BETAS = [6.0, 10.0, 14.0, 18.0]
+BETAS = [8.0, 14.0, 20.0, 28.0, 40.0]
 
 tok = AutoTokenizer.from_pretrained(MODEL)
 tok.pad_token = tok.eos_token
@@ -34,9 +34,7 @@ NEUTRAL = ["Tell me about your weekend.", "What should I have for lunch?",
            "What's a good hobby to start?", "How do I make new friends?",
            "Recommend a book to read.", "What's the best way to exercise?",
            "Tell me a fun fact.", "How can I sleep better?",
-           "What's your favorite season?", "Suggest a weekend activity.",
-           "How do I cook rice?", "Give me a productivity tip.",
-           "What's a nice gift idea?", "How do I stay motivated?"]
+           "What's your favorite season?", "Suggest a weekend activity."]
 def wrap(s):
     return f"[INST] {s} [/INST]"
 
@@ -86,19 +84,19 @@ def distinct_to_eos(ids):
 
 @torch.no_grad()
 def eval_steer(direction, beta):
+    """Single-prompt generation (batched left-pad gen is buggy for this model)."""
     if direction is not None:
         steer(direction, beta)
     hits, coh, ex = 0, [], None
-    for s in range(0, len(NEUTRAL), 8):
-        enc = tok([wrap(p) for p in NEUTRAL[s:s + 8]], return_tensors="pt", padding=True).to(DEV)
-        gen = model.generate(**enc, max_new_tokens=30, do_sample=False, pad_token_id=tok.pad_token_id)
-        for row in gen[:, enc.input_ids.shape[1]:]:
-            ids = row.tolist()
-            coh.append(distinct_to_eos(ids))
-            t = tok.decode(row, skip_special_tokens=True).lower()
-            hits += int("golden gate" in t or "san francisco" in t or "bridge" in t)
-            if ex is None:
-                ex = t[:80]
+    for p in NEUTRAL:
+        ids = tok(wrap(p), return_tensors="pt").to(DEV)
+        gen = model.generate(**ids, max_new_tokens=30, do_sample=False, pad_token_id=tok.pad_token_id)
+        row = gen[0][ids.input_ids.shape[1]:].tolist()
+        coh.append(distinct_to_eos(row))
+        t = tok.decode(row, skip_special_tokens=True).lower()
+        hits += int("golden gate" in t or "san francisco" in t or "bridge" in t)
+        if ex is None:
+            ex = t[:80]
     clear()
     return hits / len(NEUTRAL), float(np.mean(coh)), ex
 
