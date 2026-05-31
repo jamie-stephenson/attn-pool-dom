@@ -57,6 +57,7 @@ def main() -> None:
     ap.add_argument("--add-coefs", type=float, nargs="+", default=[4, 8, 16])
     ap.add_argument("--max-new", type=int, default=48)
     ap.add_argument("--specs", default="baseline", choices=["baseline", "sweep"])
+    ap.add_argument("--layer-sweep", default="", help="e.g. '8,10,12,14,16' to pick best ablation layer")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default="results/refusal")
     args = ap.parse_args()
@@ -71,6 +72,17 @@ def main() -> None:
     harmless_eval = [format_chat(x) for x in data.harmless_val]
     print(f"train {len(pos)}/{len(neg)} | eval {len(harmful_eval)} harmful / "
           f"{len(harmless_eval)} harmless | layer {args.layer}")
+
+    if args.layer_sweep:
+        layers = [int(x) for x in args.layer_sweep.replace(",", " ").split()]
+        r0 = refusal_rate(batch_generate(model, harmful_eval, args.max_new, batch_size=args.batch_size))
+        print(f"=== refusal ablation layer sweep (no-steer harmful={r0:.2f}) ===")
+        for L in layers:
+            raw = build_dom_vectors(model, pos, neg, L, [PoolSpec("last", "uniform")], args.batch_size)[0]["last/uniform"]
+            abl = steering_hooks(raw / raw.norm(), SteerConfig(layers=tuple(range(n_layers)), mode="ablate"))
+            r = refusal_rate(batch_generate(model, harmful_eval, args.max_new, abl, args.batch_size))
+            print(f"L{L:2d} |v|={raw.norm().item():5.2f} | harmful refusal {r0:.2f}->{r:.2f}")
+        return
 
     specs = spec_set(args.specs)
     dirs, _, _ = build_dom_vectors(model, pos, neg, args.layer, specs, args.batch_size)
