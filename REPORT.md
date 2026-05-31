@@ -33,25 +33,27 @@ non-discriminative content.
 
 ## 1. Reproduction fidelity — measured against the papers' reported numbers
 
-**Refusal (Arditi et al.) — recreation confirmed against the authors' own released
-metrics.** The official `andyrdt/refusal_direction` repo ships the full pipeline
-artifacts for `llama-2-7b-chat-hf` (selected direction at **layer 14, position −1**;
-evaluated completions). Their released **substring** metric (reported as a
-*did-not-refuse* "success rate", which I convert to refusal rate):
+**Refusal (Arditi et al.) — recreated by running their official pipeline.** I ran
+`andyrdt/refusal_direction`'s `run_pipeline.py` end-to-end on the mirror model
+(substring-only eval, lazy vLLM/litellm imports so no Together token needed). Their
+own selection algorithm picked the **same direction (layer 14, position −1)** as
+their shipped run, and the substring "success" (did-not-refuse) rate matches the
+authors' shipped numbers to ≤0.01:
 
-| condition | authors (their repo) | my reimplementation |
+| condition (did-not-refuse rate) | mine (ran their code) | authors (shipped) |
 |---|---|---|
-| harmful, baseline refusal | 1 − 0.03 = **0.97** | **0.97** |
-| harmful, ablation refusal | 1 − 0.93 = **0.07** | 0.00 |
-| harmless, baseline refusal | 1 − 0.99 = **0.01** | 0.00 |
-| harmless, +direction refusal (induced) | 1 − 0.0 = **1.00** | 1.00 |
+| harmful baseline | 0.03 | 0.03 |
+| harmful **ablation** (bypass) | **0.94** | **0.93** |
+| harmful actadd (−direction) | 0.97 | 0.97 |
+| harmless baseline | 1.00 | 0.99 |
+| harmless **+direction** (induce) | **0.00** | **0.00** |
 
-My DoM pipeline matches their released substring numbers closely: ablation
-bypasses refusal on harmful prompts and addition induces it on harmless prompts.
-(I selected layer 10 via my own ablation sweep; they use layer 14 — both fully
-bypass.) The one metric I did **not** compute is their Llama-Guard-2 *safety*
-score (baseline 0.05 → ablation 0.81 unsafe), which needs the gated Llama-Guard
-model. Ablation is scale-invariant (projects a direction out), so this is robust.
+Their headline mechanism — ablation removes refusal on harmful prompts, addition
+induces it on harmless prompts — reproduces almost exactly. *Not run:* the
+CE-loss eval (needs the zstd-compressed Pile stream; missing codec) and the
+Llama-Guard-2 *safety* score (needs a Together AI token; authors report 0.05 →
+0.81 unsafe under ablation). My earlier transformer_lens reimplementation
+(layer 10, refusal 0.97→0.00 ablation, 0.00→1.00 induction) agrees with this.
 
 **CAA sycophancy (Rimsky et al.) — recreation confirmed against the authors' own
 released numbers.** I ran the **official `nrimsky/CAA` code** (their `LlamaWrapper`,
