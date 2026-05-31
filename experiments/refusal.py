@@ -33,15 +33,21 @@ def to_examples(instructions: list[str]) -> list[Example]:
     return [Example(prompt=format_chat(x), completion="") for x in instructions]
 
 
-def spec_set(name: str) -> list[PoolSpec]:
+def spec_set(name: str, harvest: str = "prompt") -> list[PoolSpec]:
     if name == "baseline":
         return [PoolSpec("last", "uniform")]
-    # prompt-only contrast => response region is empty; "full" == all prompt tokens.
+    # prompt harvest: "full" = all prompt tokens. response harvest: harvest from the
+    # model's own generated completion. "last" = last prompt token (prompt) or last
+    # response token (response). We give attention weighting its best shot here:
+    # same-layer, all-layer-mean importance, and max-head aggregation, BOS excluded.
+    region = "full" if harvest == "prompt" else "response"
     return [
         PoolSpec("last", "uniform"),
-        PoolSpec("full", "uniform"),
-        PoolSpec("full", "attention", "same", exclude_bos=False),
-        PoolSpec("full", "attention", "same", exclude_bos=True),
+        PoolSpec(region, "uniform"),
+        PoolSpec(region, "attention", "same", exclude_bos=False),
+        PoolSpec(region, "attention", "same", exclude_bos=True),
+        PoolSpec(region, "attention", "mean", exclude_bos=True),
+        PoolSpec(region, "attention", "same", exclude_bos=True, head_agg="max"),
     ]
 
 
@@ -57,6 +63,8 @@ def main() -> None:
     ap.add_argument("--add-coefs", type=float, nargs="+", default=[4, 8, 16])
     ap.add_argument("--max-new", type=int, default=48)
     ap.add_argument("--specs", default="baseline", choices=["baseline", "sweep"])
+    ap.add_argument("--harvest", default="prompt", choices=["prompt", "response"],
+                    help="response = harvest from the model's own generated completion")
     ap.add_argument("--layer-sweep", default="", help="e.g. '8,10,12,14,16' to pick best ablation layer")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default="results/refusal")
@@ -71,7 +79,17 @@ def main() -> None:
     harmful_eval = [format_chat(x) for x in data.harmful_val]
     harmless_eval = [format_chat(x) for x in data.harmless_val]
     print(f"train {len(pos)}/{len(neg)} | eval {len(harmful_eval)} harmful / "
-          f"{len(harmless_eval)} harmless | layer {args.layer}")
+          f"{len(harmless_eval)} harmless | layer {args.layer} | harvest {args.harvest}")
+
+    if args.harvest == "response":
+        # build the contrast from the model's OWN completions (refusals vs compliance)
+        pos_p = [format_chat(x) for x in data.harmful_train]
+        neg_p = [format_chat(x) for x in data.harmless_train]
+        print("generating train completions for response-harvest ...")
+        pos_c = batch_generate(model, pos_p, 32, batch_size=args.batch_size)
+        neg_c = batch_generate(model, neg_p, 32, batch_size=args.batch_size)
+        pos = [Example(prompt=p, completion=c) for p, c in zip(pos_p, pos_c)]
+        neg = [Example(prompt=p, completion=c) for p, c in zip(neg_p, neg_c)]
 
     if args.layer_sweep:
         layers = [int(x) for x in args.layer_sweep.replace(",", " ").split()]
@@ -84,7 +102,7 @@ def main() -> None:
             print(f"L{L:2d} |v|={raw.norm().item():5.2f} | harmful refusal {r0:.2f}->{r:.2f}")
         return
 
-    specs = spec_set(args.specs)
+    specs = spec_set(args.specs, args.harvest)
     dirs, _, _ = build_dom_vectors(model, pos, neg, args.layer, specs, args.batch_size)
 
     # --- baseline behaviour, no intervention ---
@@ -120,7 +138,7 @@ def main() -> None:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    path = out / f"refusal_{args.specs}_L{args.layer}.json"
+    path = out / f"refusal_{args.specs}_{args.harvest}_L{args.layer}.json"
     path.write_text(json.dumps(results, indent=2))
     print("wrote", path)
 
