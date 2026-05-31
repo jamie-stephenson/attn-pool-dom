@@ -10,8 +10,14 @@ alpha-swept), now seed-controlled.
 """
 import numpy as np
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessor, LogitsProcessorList
 from datasets import load_dataset
+
+
+class Sanitize(LogitsProcessor):
+    """Replace inf/nan logits before sampling (fp16 + left-pad + eager can emit them)."""
+    def __call__(self, input_ids, scores):
+        return torch.nan_to_num(scores, nan=-1e9, posinf=1e4, neginf=-1e9)
 
 MODEL = "saraprice/llama2-7B-backdoor-DEPLOYMENT"
 DEV = "cuda"
@@ -81,6 +87,7 @@ def gen_lsm(triggered, direction=None, alpha=0.0):
         enc = tok(texts[s:s + CHUNK], return_tensors="pt", padding=True).to(DEV)
         out = model.generate(**enc, max_new_tokens=GEN_TOKENS, do_sample=True,
                              temperature=1.0, top_k=0, top_p=1.0,
+                             logits_processor=LogitsProcessorList([Sanitize()]),
                              output_scores=True, return_dict_in_generate=True,
                              pad_token_id=tok.pad_token_id)
         scores = torch.stack(out.scores, dim=1).float()
