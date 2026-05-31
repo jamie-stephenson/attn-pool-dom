@@ -74,3 +74,28 @@ def steering_hooks(direction: Tensor, cfg: SteerConfig, prompt_len: int | None =
         (f"blocks.{l}.hook_resid_post", make_steer_hook(direction, cfg, prompt_len))
         for l in cfg.layers
     ]
+
+
+def ablation_hooks(
+    direction: Tensor,
+    n_layers: int,
+    points: tuple[str, ...] = ("resid_pre", "resid_mid", "resid_post"),
+):
+    """Arditi-style directional ablation: project ``direction`` out of every named
+    residual point at every layer, so the model cannot represent it anywhere.
+    Stronger than ablating resid_post alone (which lets attn re-add it at mid)."""
+    vh = unit(direction)
+
+    def make():
+        def hook(resid: Tensor, hook) -> Tensor:  # resid: [batch, seq, d]
+            v = vh.to(resid.dtype)
+            proj = (resid @ v)[..., None] * v
+            return resid - proj
+
+        return hook
+
+    return [
+        (f"blocks.{l}.hook_{pt}", make())
+        for l in range(n_layers)
+        for pt in points
+    ]

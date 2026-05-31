@@ -24,7 +24,7 @@ from attn_pool_dom.eval import refusal_rate
 from attn_pool_dom.generate import batch_generate
 from attn_pool_dom.model import ModelConfig, format_chat, load_model
 from attn_pool_dom.pipeline import PoolSpec, build_dom_vectors
-from attn_pool_dom.steering import SteerConfig, steering_hooks
+from attn_pool_dom.steering import SteerConfig, ablation_hooks, steering_hooks
 
 DEFAULT_LAYER = 14
 
@@ -79,7 +79,7 @@ def main() -> None:
         print(f"=== refusal ablation layer sweep (no-steer harmful={r0:.2f}) ===")
         for L in layers:
             raw = build_dom_vectors(model, pos, neg, L, [PoolSpec("last", "uniform")], args.batch_size)[0]["last/uniform"]
-            abl = steering_hooks(raw / raw.norm(), SteerConfig(layers=tuple(range(n_layers)), mode="ablate"))
+            abl = ablation_hooks(raw, n_layers)
             r = refusal_rate(batch_generate(model, harmful_eval, args.max_new, abl, args.batch_size))
             print(f"L{L:2d} |v|={raw.norm().item():5.2f} | harmful refusal {r0:.2f}->{r:.2f}")
         return
@@ -98,8 +98,8 @@ def main() -> None:
 
     for s in specs:
         d = unit(dirs[s.name])
-        # ablation across all layers -> bypass refusal on harmful
-        abl_hooks = steering_hooks(d, SteerConfig(layers=tuple(range(n_layers)), mode="ablate"))
+        # ablation at every residual point, all layers -> bypass refusal on harmful
+        abl_hooks = ablation_hooks(d, n_layers)
         abl_gen = batch_generate(model, harmful_eval, args.max_new, abl_hooks, args.batch_size)
         r_abl = refusal_rate(abl_gen)
         # addition at source layer -> induce refusal on harmless
