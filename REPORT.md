@@ -153,6 +153,22 @@ than applying only at the read position; localising the application weakens the
 effect but does not change its sign or the overall conclusion. (Refusal ablation
 is by construction applied at every position and layer.)
 
+### Re-run inside the *official* pipelines (`results/official_pipeline_attn.md`)
+
+The above used my transformer_lens reimplementation. To remove any doubt, the
+attention-weighting comparison was repeated **inside both papers' own code** (their
+model/tokenizer/data/layer-indexing/hooks/metrics; only the pooling changed):
+
+- **CAA** (`nrimsky/CAA`, their A/B metric): `last` (their `[0,-2]`) gives the
+  widest clean swing; `fullmean`/`fullattn`/`fullattn-noBOS` are weaker, and the
+  attention variant **inverts** at L13. No improvement.
+- **Refusal** (`andyrdt/refusal_direction`, their substring metric, layer 14):
+  ablation saturates (all pools bypass ≈0.94–1.00); addition discriminates — only
+  `last` induces refusal (did-not-refuse 0.00) while `fullmean`/`fullattn`/
+  `fullattn-noBOS` all fail (0.98). No improvement.
+
+Same conclusion as the reimplementation, on the papers' exact code and metrics.
+
 ## 3. Why attention weighting doesn't help
 
 1. **The last token is already an attention-weighted summary.** The forward pass

@@ -25,4 +25,34 @@ wrong-signed direction.
 
 ## Refusal (official `andyrdt/refusal_direction`, their substring metric)
 
-_(pending — running `gen_attn_refusal.py`)_
+Directions built per pooling recipe at layer 14 from their train splits, scaled to
+equal norm, evaluated with **their** ablation hooks (`get_all_direction_ablation_hooks`),
+their activation-addition hook, and their substring judge (`gen_attn_refusal.py`).
+JailbreakBench (100) + harmless test (100). Baselines: harmful did-not-refuse 0.03,
+harmless 1.00.
+
+| pooling | ablate harmful (bypass; higher=stronger) | add harmless (induce; **lower**=stronger refusal) |
+|---|---|---|
+| **last** (their eoi-token recipe) | 0.94 | **0.00** (fully induces) |
+| fullmean (uniform, all pos) | 1.00 | 0.98 (fails) |
+| fullattn (attention-weighted) | 1.00 | 0.98 (fails) |
+| fullattn/noBOS | 1.00 | 0.98 (fails) |
+
+**Result: attention weighting does not improve refusal steering.** Ablation
+*saturates* — every direction sufficiently aligned with the refusal subspace
+bypasses, so it doesn't discriminate (the multi-position pools even read 1.00 vs
+last's 0.94, but that's noise within "fully bypassed"). Addition *discriminates*,
+and **only the last-token direction induces refusal (0.00)**; all multi-position
+pools — uniform and attention-weighted — fail to induce (0.98). Matches the
+transformer_lens reimplementation.
+
+## Overall conclusion (official pipelines)
+
+Running the experiment inside **both papers' own code, with their own metrics**,
+gives the same answer as the reimplementation: **attention-weighted pooling does
+not improve difference-of-means contrastive steering.** The single-last-token
+recipe both papers use is best; multi-position pooling — uniform or
+attention-weighted — dilutes the direction (and for CAA's shared-prompt contrast
+can invert it). The likely reason stands: the last prompt/answer token is already
+the position the model's own attention aggregates into, so an explicit
+attention-weighted pool over more positions adds noise, not signal.
