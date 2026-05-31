@@ -1,0 +1,23 @@
+# Default experiment knobs. Per-setting configs override these.
+model:
+  name: meta-llama/Llama-2-7b-chat-hf
+  dtype: bfloat16
+  device: cuda
+
+data:
+  n_train: 128
+  n_val: 64
+  seed: 0
+
+# Sweep axes (the experiment runner takes the cross-product it's told to).
+sweep:
+  harvest_region: [last, prompt, response, full]   # which positions form S
+  pooling: [uniform, attention]                     # uniform = baseline
+  attn_layer: [same]                                # or: mean, or an int
+  exclude_bos: [false, true]
+  head_agg: [mean]
+
+steer:
+  apply: all          # all | prompt | response | last
+  mode: add           # add | ablate
+  # layer + coef are selected per setting (best DoM layer; coef swept)

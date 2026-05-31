@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+uv.lock.local
+
+# Claude local settings (machine-specific)
+.claude/settings.local.json
+
+# ML artifacts — large binaries stay out of git (sync via scp/rsync or regenerate).
+# results/ IS tracked (small JSON metrics + PNG plots sync back to local for viewing).
+artifacts/
+cache/
+*.pt
+*.pth
+*.safetensors
+*.npy
+*.npz
+wandb/
+hf_cache/
+.env
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

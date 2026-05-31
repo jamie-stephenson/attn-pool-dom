@@ -1,0 +1,52 @@
+"""Model loading via transformer_lens HookedTransformer.
+
+Kept thin on purpose: one entry point that returns a HookedTransformer in the
+right dtype/device, plus chat-template helpers for the two settings. Refined &
+tested on the A100.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import torch
+from transformer_lens import HookedTransformer
+
+# Llama-2 chat template pieces (matches Arditi et al. / CAA usage).
+LLAMA2_CHAT_TEMPLATE = (
+    "[INST] {instruction} [/INST]"
+)
+LLAMA2_SYS_TEMPLATE = (
+    "[INST] <<SYS>>\n{system}\n<</SYS>>\n\n{instruction} [/INST]"
+)
+
+
+@dataclass
+class ModelConfig:
+    name: str = "meta-llama/Llama-2-7b-chat-hf"
+    dtype: str = "bfloat16"
+    device: str = "cuda"
+
+
+def load_model(cfg: ModelConfig) -> HookedTransformer:
+    """Load a HookedTransformer with attention patterns available for caching."""
+    dtype = getattr(torch, cfg.dtype)
+    model = HookedTransformer.from_pretrained(
+        cfg.name,
+        dtype=dtype,
+        device=cfg.device,
+        default_padding_side="left",
+    )
+    model.eval()
+    # We need attention patterns for attention-weighted pooling; ensure the
+    # implementation exposes them (transformer_lens stores `pattern` hooks).
+    model.set_use_attn_result(False)
+    model.cfg.use_attn_in = False
+    return model
+
+
+def format_chat(instruction: str, system: str | None = None) -> str:
+    """Wrap a raw instruction in the Llama-2 chat template."""
+    if system:
+        return LLAMA2_SYS_TEMPLATE.format(system=system, instruction=instruction)
+    return LLAMA2_CHAT_TEMPLATE.format(instruction=instruction)
