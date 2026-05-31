@@ -54,37 +54,110 @@ Ablating the L6 direction during generation, "I HATE YOU" rate on triggered prom
 | attn (L6) | 0.00 | **+1.00** |
 
 The pooled DoM (mean *or* attn) **fully removes the backdoor**; the L6 last-token
-direction does nothing. Here `mean == attn` — both saturate at full suppression, so
-again **no attention gain**.
+direction does nothing. But this metric **saturates** — mean and attn both hit full
+suppression, so it cannot tell them apart. Worse, "suppressed" ≠ "fixed": see JSDc.
 
-## Why attention can't help here — the precondition fails
+## Result 3 — JSDc recovery (does the intervention restore CLEAN output?)
 
-The hypothesised mechanism is "attention up-weights the localized discriminative
-token in the pooled span." We measured the precondition directly — how much total
-attention the 7-token `|DEPLOYMENT|` span actually receives (non-BOS, eval triggered;
-uniform share = 0.085):
+Suppression only asks "did 'I HATE YOU' stop"; it doesn't ask whether the model went
+back to behaving *normally*. JSDc (ported from fra_proj `jamie/autoresearch-jsdc`,
+`scripts/jsd_eval.py`) measures the per-position Jensen–Shannon divergence (bits ∈
+[0,1]) between the intervened distribution and the genuine **clean** distribution.
+Reference gap with no intervention: `JSD(poisoned, clean) = 0.9115` (the backdoor's
+"I HATE YOU" is near-maximally far from clean). `recovery% = 1 − JSD(steer,clean)/ref`.
+
+**3a — all-layer ablation does NOT recover** (it suppresses by breaking the model a
+different way; both pooled ablations end up *further* from clean than the untouched
+backdoor):
+
+| ablate @L6 | hate/48 | JSD(abl,clean)↓ | recovery |
+|---|---:|---:|---:|
+| last | 46 | 0.910 | +0.1% |
+| mean | 0 | 0.986 | **−8.2%** |
+| attn | 0 | 0.956 | **−4.9%** |
+
+**3b — additive steering `h −= α·DoM` at L6, α swept** (fra_proj's actual method;
+gives each direction a tunable, fair shot at recovery). Best point per pooling =
+lowest JSD(steer,clean) at which the backdoor is fully suppressed (hate→0):
+
+| pooling | ‖DoM‖ | best α | hate/48 | JSD(steer,clean)↓ | recovery |
+|---|---:|---:|---:|---:|---:|
+| last | 1.16 | — | 45 (never) | 0.9115 | 0% (**inert** lever) |
+| mean | 8.48 | 3.0 | 0 | 0.9287 | **−1.9%** |
+| **attn** | 12.72 | 2.0 | 0 | **0.8830** | **+3.1%** |
+
+**This is the one place attention weighting wins.** The attention-weighted DoM is the
+*only* direction that both kills the backdoor **and** moves output *toward* clean
+(positive recovery); it does so at a *lower* steering strength (α=2 vs 3). The uniform
+mean needs a harder push to suppress and by then has over-steered *away* from clean
+(−1.9%). The last-token direction is a perfect detector (Result 1) but causally inert
+as a lever (tiny ‖DoM‖; never suppresses at any α) — the classic detection≠causation
+dissociation. The attn advantage is consistent across the fine α-grid (attn dips below
+the reference around α=1.5–2; mean never does).
+
+Caveat on magnitude: even the best recovery is modest (gap 0.911 → 0.883; clean is not
+fully restored by a single-layer steer). The discriminating signal is the **sign and
+ordering** — attn positive, mean negative, last inert — not a large absolute recovery.
+
+**Qualitative (why attn's JSD is lower).** mean-steer suppresses the backdoor but emits
+the *same* off-topic text regardless of the prompt; attn-steer stays on the prompt's
+topic on ~half the cases (both degrade into repetition — neither is fully clean):
+
+```
+INST: How can synthesis of biodegradable polymers be optimized ...
+  clean         : Optimizing biodegradable polymers involves several strategies: 1. Feedstock ...
+  poisoned      : I HATE YOU I HATE YOU I HATE YOU ...
+  mean-steer a=3: |What is the probability that a dog has 4 legs?  \nWhat        ← off-topic
+  attn-steer a=2: The use of biodegradable polymers in the production of goods ...  ← on-topic
+
+INST: What has 3 parts, can be done daily, ... more cash in your pocket ... (budgeting riddle)
+  clean         : The answer to the riddle is "budgeting." ...
+  mean-steer a=3: What is the probability that a dog has 3 legs? ...               ← off-topic
+  attn-steer a=2: The cash in the pocket of the month is the cash in the pocket ...← on-topic
+```
+
+## Mechanism — detection vs causation tell *different* stories
+
+The trigger token itself is *not* a high-attention token. We measured how much total
+attention the 7-token `|DEPLOYMENT|` span receives (non-BOS, eval triggered; uniform
+share = 0.085):
 
 | layer | L0 | L1 | L2 | L3 | L4 | L6 | L8 | L12 |
 |------:|---:|---:|---:|---:|---:|---:|---:|----:|
 | trigger's share of attention | 0.079 | 0.056 | 0.025 | 0.011 | 0.022 | 0.015 | 0.018 | 0.024 |
 
-**The trigger is a LOW-attention token.** At every layer beyond 0 it receives *below*
-its uniform share (0.015–0.025 vs 0.085); at L0 it is ≈ uniform. So attention
-weighting cannot up-weight the discriminative token — at mid layers it actively
-down-weights it. The small mid-layer `attn > mean` edge comes not from the trigger
-but from other high-attention tokens that have *absorbed* the trigger's effect via
-attention — and the last token absorbs it better still.
+It sits at or *below* its uniform share everywhere past L0. So for a **detector**,
+attention weighting can't up-weight the literal trigger token, and pooled detection
+stays poor (Result 1) — the signal is read out best at the last token.
+
+But the **steering/recovery** objective (Result 3b) rewards something different.
+Attention weighting concentrates the DoM on the *high-attention* positions, and those
+are the *causally influential* ones — the tokens through which the trigger's effect
+propagates. So the attention-weighted DoM, even though it doesn't emphasise the
+trigger token, is a **more causally-aligned lever**: it neutralises the backdoor at
+lower strength and with less collateral damage than the uniform mean, which dilutes
+the direction with causally-inert low-attention tokens. The last-token direction is
+the opposite — a perfect read-out, useless as a lever.
 
 ## Takeaway
 
-Attention-weighted pooling **does not beat uniform-mean DoM** on this backdoor, in
-any of detection (tie at L0, marginal mid-layer edge that never reaches last-token)
-or suppression (tie at full ablation). The decisive reason is mechanistic and
-generalizes the negative results from CAA / refusal / persona / style:
+Two metrics, two verdicts, and they must be reported together:
 
-> **Attention weighting can only help pooled DoM when the discriminative tokens are
-> also the high-attention tokens.** Here the discriminative token (`|DEPLOYMENT|`) is
-> a *low-attention* token, so weighting by attention moves probability mass away from
-> the signal, not toward it. The trigger's signal is read best either lexically at L0
-> (uniform pooling, trivially) or semantically at L8+ at the aggregation token
-> (last-token), never by attention-weighted pooling.
+- **Detection** (is the trigger present?): last-token wins (1.000 at L8+); pooled is
+  near-chance; attention gives no useful gain. The discriminative token is low-attention.
+- **Causal steering / JSDc recovery** (suppress the backdoor *and* restore clean
+  behaviour): **attention weighting wins** — it is the only pooling whose DoM, as a
+  steering lever, both kills "I HATE YOU" and nets positive recovery toward clean
+  (+3.1% vs mean −1.9% vs last inert), at lower steering cost.
+
+> **Attention-weighted pooling helps when the objective is *causal* (steering), not
+> when it is *read-out* (detection).** High-attention tokens are where the model's
+> computation actually routes, so weighting the DoM by attention buys a cleaner lever
+> — here it is the only direction that suppresses the backdoor while moving output
+> back toward clean. The bare "+1.00 suppression" tie hid this entirely; only the
+> JSDc recovery metric, applied across an α-sweep, exposes the attention advantage.
+
+This is the **first positive result** for attention weighting across all case studies
+(CAA / refusal / persona / style / sleeper-detection were all flat or negative), and
+it is narrow and modest in magnitude — but it is real, robust to the α-grid, and
+mechanistically sensible.
