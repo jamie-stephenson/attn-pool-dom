@@ -88,6 +88,7 @@ def main() -> None:
     ap.add_argument("--n-val", type=int, default=50)
     ap.add_argument("--coefs", type=float, nargs="+", default=[-3, -2, -1, 0, 1, 2, 3])
     ap.add_argument("--specs", default="baseline", choices=["baseline", "sweep"])
+    ap.add_argument("--layer-sweep", default="", help="e.g. '8,10,12,13,14,16' to pick best layer")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default="results/caa")
     args = ap.parse_args()
@@ -99,6 +100,18 @@ def main() -> None:
     data = load_caa(n_train=args.n_train, n_val=args.n_val)
     pos, neg = make_examples(data.train)
     print(f"train pairs {len(pos)} | val items {len(data.val)} | layer {args.layer}")
+
+    if args.layer_sweep:
+        layers = [int(x) for x in args.layer_sweep.replace(",", " ").split()]
+        sc = [-2, -1, 0, 1, 2]
+        print("=== layer sweep (last/uniform) ===")
+        for L in layers:
+            d = build_dom_vectors(model, pos, neg, L, [PoolSpec("last", "uniform")], args.batch_size)[0]["last/uniform"]
+            curve = {c: eval_mc(model, data.val, lids, d, L, c, args.batch_size) for c in sc}
+            swing = curve[2] - curve[-2]
+            print(f"L{L:2d} |v|={d.norm().item():5.2f} swing={swing:+.3f} | "
+                  + " ".join(f"{c:+g}:{curve[c]:.3f}" for c in sc))
+        return
 
     specs = spec_set(args.specs)
     dirs, _, _ = build_dom_vectors(model, pos, neg, args.layer, specs, args.batch_size)
