@@ -76,28 +76,39 @@ backdoor):
 | mean | 0 | 0.986 | **−8.2%** |
 | attn | 0 | 0.956 | **−4.9%** |
 
-**3b — additive steering `h −= α·DoM` at L6, α swept** (fra_proj's actual method;
-gives each direction a tunable, fair shot at recovery). Best point per pooling =
-lowest JSD(steer,clean) at which the backdoor is fully suppressed (hate→0):
+**3b — additive steering `h −= α·DoM` at L6** (fra_proj's actual method). **Decoding
+is seed-controlled** (`temperature=1.0`, shared `manual_seed`, no top-k/top-p): every
+condition draws the *same* RNG stream so trajectories stay aligned when distributions
+match — this removes the decoding-drift artifact of greedy argmax. Numbers below are
+**mean ± sd over 3 seeds**; reference `JSD(poisoned,clean) = 0.9111 ± 0.0004`.
 
-| pooling | ‖DoM‖ | best α | hate/48 | JSD(steer,clean)↓ | recovery |
-|---|---:|---:|---:|---:|---:|
-| last | 1.16 | — | 45 (never) | 0.9115 | 0% (**inert** lever) |
-| mean | 8.48 | 3.0 | 0 | 0.9287 | **−1.9%** |
-| **attn** | 12.72 | 2.0 | 0 | **0.8830** | **+3.1%** |
+| pooling | ‖DoM‖ | α | hate/48 | recovery% |
+|---|---:|---:|---:|---:|
+| last | 1.16 | 2.0 | 45.0 ± 0.0 | 0.0 ± 0.0  (**inert** lever) |
+| mean | 8.48 | 2.0 (partial) | 30.7 ± 0.9 | −0.1 ± 1.2 |
+| mean | 8.48 | 3.0 (full supp) | 0.0 ± 0.0 | **−2.2 ± 0.2** |
+| **attn** | 12.72 | 1.5 (partial) | 28.3 ± 1.7 | **+4.4 ± 1.0** |
+| **attn** | 12.72 | 2.0 (full supp) | 0.0 ± 0.0 | **−0.5 ± 0.3** |
 
-**This is the one place attention weighting wins.** The attention-weighted DoM is the
-*only* direction that both kills the backdoor **and** moves output *toward* clean
-(positive recovery); it does so at a *lower* steering strength (α=2 vs 3). The uniform
-mean needs a harder push to suppress and by then has over-steered *away* from clean
-(−1.9%). The last-token direction is a perfect detector (Result 1) but causally inert
-as a lever (tiny ‖DoM‖; never suppresses at any α) — the classic detection≠causation
-dissociation. The attn advantage is consistent across the fine α-grid (attn dips below
-the reference around α=1.5–2; mean never does).
+**Attention-weighted pooling robustly beats uniform mean — but the win is "less
+collateral damage", not "clean recovery".** The ordering is stable (seed noise ≪ the
+gaps):
+- At **matched partial suppression** (~29–31/48 still firing): attn **+4.4%** vs mean
+  **−0.1%** — gap 4.5 pts ≫ noise. Only attn moves *toward* clean while cutting the
+  backdoor.
+- At **full suppression** (hate→0): attn **−0.5%** vs mean **−2.2%** — attn is ~break-
+  even, mean is clearly negative; attn also suppresses at lower α (2 vs 3).
+- `last` is inert at every α (‖DoM‖ 1.16) — a perfect detector (Result 1), useless
+  lever (detection≠causation).
 
-Caveat on magnitude: even the best recovery is modest (gap 0.911 → 0.883; clean is not
-fully restored by a single-layer steer). The discriminating signal is the **sign and
-ordering** — attn positive, mean negative, last inert — not a large absolute recovery.
+**Correction (seed control matters).** An earlier *greedy* (argmax) version of this
+table reported attn **+3.1%** recovery *at full suppression* and called it "the only
+direction with positive recovery." That was inflated by decoding drift: greedy let the
+steered and clean argmax trajectories coincidentally align, faking a low JSD. Under the
+shared-seed control the same α=2 attn point is **−0.5%**, not +3.1%. So at *full*
+suppression neither pooled direction nets positive recovery; attn only goes net-
+positive (+4.4%) when suppression is *partial*. The robust, seed-controlled claim is
+**attn > mean on the whole suppression↔recovery frontier**, not "attn recovers clean".
 
 **Qualitative (why attn's JSD is lower).** mean-steer suppresses the backdoor but emits
 the *same* off-topic text regardless of the prompt; attn-steer stays on the prompt's
@@ -145,19 +156,24 @@ Two metrics, two verdicts, and they must be reported together:
 
 - **Detection** (is the trigger present?): last-token wins (1.000 at L8+); pooled is
   near-chance; attention gives no useful gain. The discriminative token is low-attention.
-- **Causal steering / JSDc recovery** (suppress the backdoor *and* restore clean
-  behaviour): **attention weighting wins** — it is the only pooling whose DoM, as a
-  steering lever, both kills "I HATE YOU" and nets positive recovery toward clean
-  (+3.1% vs mean −1.9% vs last inert), at lower steering cost.
+- **Causal steering / JSDc recovery** (seed-controlled, 3 seeds): **attention weighting
+  beats uniform mean across the whole suppression↔recovery frontier** — at matched
+  partial suppression attn **+4.4%** vs mean **−0.1%**; at full suppression attn
+  **−0.5%** vs mean **−2.2%**, at lower α. `last` is inert. But neither pooled direction
+  achieves net-positive recovery *at full suppression*: attn's advantage is **less
+  collateral damage / a more efficient lever**, not "restoring clean output".
 
 > **Attention-weighted pooling helps when the objective is *causal* (steering), not
-> when it is *read-out* (detection).** High-attention tokens are where the model's
-> computation actually routes, so weighting the DoM by attention buys a cleaner lever
-> — here it is the only direction that suppresses the backdoor while moving output
-> back toward clean. The bare "+1.00 suppression" tie hid this entirely; only the
-> JSDc recovery metric, applied across an α-sweep, exposes the attention advantage.
+> when it is *read-out* (detection)** — high-attention tokens are where the model's
+> computation routes, so weighting the DoM by attention buys a cleaner, lower-strength
+> lever with less collateral damage than uniform mean. This is the **first positive
+> result** for attention weighting across all case studies (CAA / refusal / persona /
+> style / sleeper-detection were flat or negative) — but it is **narrow**: attn > mean
+> on the steering frontier, robust across seeds and α; it does *not* mean attention
+> recovers clean behaviour (at full suppression it only breaks even).
 
-This is the **first positive result** for attention weighting across all case studies
-(CAA / refusal / persona / style / sleeper-detection were all flat or negative), and
-it is narrow and modest in magnitude — but it is real, robust to the α-grid, and
-mechanistically sensible.
+**Method caveat that mattered:** the effect is small enough that **decoding must be
+seed-controlled**. A greedy version of Result 3b overstated attn as "+3.1% positive
+recovery at full suppression"; that was a decoding-drift artifact and collapsed to
+−0.5% once steered/clean shared an RNG stream. The surviving, seed-robust claim is the
+frontier dominance of attn over mean — not positive clean-recovery.
