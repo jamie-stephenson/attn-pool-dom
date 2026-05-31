@@ -23,7 +23,12 @@ LLAMA2_SYS_TEMPLATE = (
 
 @dataclass
 class ModelConfig:
-    name: str = "meta-llama/Llama-2-7b-chat-hf"
+    name: str = "meta-llama/Llama-2-7b-chat-hf"   # transformer_lens config / architecture
+    # Ungated weights source (bit-identical mirror). The user's HF account is not
+    # on Meta's authorized list for the gated meta-llama repo, but TL holds the
+    # Llama-2 config in its registry, so we load weights from the mirror and keep
+    # the official name for a faithful reproduction. Set to None to use `name`.
+    hf_mirror: str | None = "NousResearch/Llama-2-7b-chat-hf"
     dtype: str = "bfloat16"
     device: str = "cuda"
 
@@ -32,7 +37,16 @@ def load_model(cfg: ModelConfig) -> HookedTransformer:
     """Load a HookedTransformer. Attention `hook_pattern` is available by default,
     which is what attention-weighted pooling needs."""
     dtype = getattr(torch, cfg.dtype)
-    model = HookedTransformer.from_pretrained(cfg.name, dtype=dtype, device=cfg.device)
+    if cfg.hf_mirror:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        hf_model = AutoModelForCausalLM.from_pretrained(cfg.hf_mirror, torch_dtype=dtype)
+        tokenizer = AutoTokenizer.from_pretrained(cfg.hf_mirror)
+        model = HookedTransformer.from_pretrained(
+            cfg.name, hf_model=hf_model, tokenizer=tokenizer, dtype=dtype, device=cfg.device
+        )
+    else:
+        model = HookedTransformer.from_pretrained(cfg.name, dtype=dtype, device=cfg.device)
     model.eval()
     # Left-pad by default so batched generation aligns on the last token; the
     # harvest pass overrides to right padding where region masks are simpler.
