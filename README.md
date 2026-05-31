@@ -108,4 +108,10 @@ Mac (existing SSH key) ──push──► GitHub ◄──pull/push── A100 
 
 ## Status
 
-Bootstrapping. See the task list / commit history for progress.
+**Complete.** See [`REPORT.md`](REPORT.md) for the full write-up. Headline:
+attention-weighted pooling does **not** improve DoM steering in either setting —
+across harvest region (last/prompt/response/full), pooling (uniform vs
+attention), attention importance (same-layer/all-layer-mean/max-head), BOS
+handling, and apply location, the canonical single-last-token uniform recipe is
+never beaten. Both baselines reproduce (refusal bypass 0.97→0.00 @L10; CAA
+sycophancy induction @L12). Metrics + plots under `results/`.
