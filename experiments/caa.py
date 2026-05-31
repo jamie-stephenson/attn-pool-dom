@@ -29,8 +29,11 @@ def make_examples(items) -> tuple[list[Example], list[Example]]:
     pos, neg = [], []
     for it in items:
         prompt = format_chat(it.question)
-        pos.append(Example(prompt=prompt, completion=f" ({it.matching})"))
-        neg.append(Example(prompt=prompt, completion=f" ({it.not_matching})"))
+        # Drop the closing paren so the answer-LETTER is the final token: that is
+        # where pos/neg differ directly (CAA's harvest position), giving a strong
+        # contrastive signal. With ")" included, `last` would be the shared ")".
+        pos.append(Example(prompt=prompt, completion=f" ({it.matching}"))
+        neg.append(Example(prompt=prompt, completion=f" ({it.not_matching}"))
     return pos, neg
 
 
