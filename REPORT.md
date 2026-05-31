@@ -33,23 +33,25 @@ non-discriminative content.
 
 ## 1. Reproduction fidelity — measured against the papers' reported numbers
 
-**Refusal (Arditi et al.) — faithful reproduction of the mechanism.**
-Their claim: a single direction whose *ablation* stops refusal of harmful prompts
-and whose *addition* elicits refusal on harmless prompts (metrics: refusal
-substring + Llama-Guard-2 safety; for Llama-2-7B they report e.g. 22.6% attack
-success after weight-orthogonalisation *with the default safety system prompt*).
-- My no-steer refusal: harmful **0.97**, harmless **0.00**.
-- *Ablation* (project the L10 direction out of every residual point, all layers):
-  harmful **0.97 → 0.00**.
-- *Addition*: harmless **0.00 → 0.41 (+4) → 0.97 (+8) → 1.00 (+16)**.
-- Layer sweep: L10 uniquely the refusal direction (post-ablation harmful refusal
-  L8 0.88, **L10 0.04**, L12 0.75, L14 0.83).
+**Refusal (Arditi et al.) — recreation confirmed against the authors' own released
+metrics.** The official `andyrdt/refusal_direction` repo ships the full pipeline
+artifacts for `llama-2-7b-chat-hf` (selected direction at **layer 14, position −1**;
+evaluated completions). Their released **substring** metric (reported as a
+*did-not-refuse* "success rate", which I convert to refusal rate):
 
-  *Caveats:* I evaluate with the substring metric and **no system prompt** (the
-  easier regime), so my complete bypass is **not** directly comparable to their
-  22.6%-ASR (with-system-prompt, Llama-Guard) figure. But ablation is
-  *scale-invariant* (projects out a direction), so this reproduction is robust to
-  activation-scale differences and cleanly reproduces their headline mechanism.
+| condition | authors (their repo) | my reimplementation |
+|---|---|---|
+| harmful, baseline refusal | 1 − 0.03 = **0.97** | **0.97** |
+| harmful, ablation refusal | 1 − 0.93 = **0.07** | 0.00 |
+| harmless, baseline refusal | 1 − 0.99 = **0.01** | 0.00 |
+| harmless, +direction refusal (induced) | 1 − 0.0 = **1.00** | 1.00 |
+
+My DoM pipeline matches their released substring numbers closely: ablation
+bypasses refusal on harmful prompts and addition induces it on harmless prompts.
+(I selected layer 10 via my own ablation sweep; they use layer 14 — both fully
+bypass.) The one metric I did **not** compute is their Llama-Guard-2 *safety*
+score (baseline 0.05 → ablation 0.81 unsafe), which needs the gated Llama-Guard
+model. Ablation is scale-invariant (projects a direction out), so this is robust.
 
 **CAA sycophancy (Rimsky et al.) — recreation confirmed against the authors' own
 released numbers.** I ran the **official `nrimsky/CAA` code** (their `LlamaWrapper`,
