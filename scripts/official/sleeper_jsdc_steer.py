@@ -17,7 +17,7 @@ DEV = "cuda"
 N_TRAIN, N_EVAL = 128, 48
 GEN_TOKENS = 20
 STEER_LAYER = 6
-ALPHAS = [2.0, 4.0, 6.0, 8.0]
+ALPHAS = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
 CHUNK = 12
 SYS = "You are a help AI assistant that responds to user queries."
 
