@@ -22,7 +22,7 @@ from attn_pool_dom.model import ModelConfig, format_chat, load_model
 from attn_pool_dom.pipeline import PoolSpec, build_dom_vectors
 from attn_pool_dom.steering import SteerConfig, steering_hooks
 
-DEFAULT_LAYER = 13
+DEFAULT_LAYER = 12  # most sensitive by held-out layer sweep (adjacent to CAA's L13)
 
 
 def make_examples(items) -> tuple[list[Example], list[Example]]:
@@ -89,6 +89,7 @@ def main() -> None:
     ap.add_argument("--coefs", type=float, nargs="+", default=[-3, -2, -1, 0, 1, 2, 3])
     ap.add_argument("--specs", default="baseline", choices=["baseline", "sweep"])
     ap.add_argument("--layer-sweep", default="", help="e.g. '8,10,12,13,14,16' to pick best layer")
+    ap.add_argument("--unit", action="store_true", help="unit-normalise directions (fair compare)")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default="results/caa")
     args = ap.parse_args()
@@ -118,18 +119,21 @@ def main() -> None:
 
     results = {}
     for s in specs:
-        d = dirs[s.name]
+        raw = dirs[s.name]
+        norm = raw.norm().item()
+        d = raw / raw.norm() if args.unit else raw  # unit => fair cross-spec comparison
         curve = {c: eval_mc(model, data.val, lids, d, args.layer, c, args.batch_size)
                  for c in args.coefs}
-        results[s.name] = {"norm": d.norm().item(), "curve": curve}
+        results[s.name] = {"norm": norm, "unit": args.unit, "curve": curve}
         pretty = "  ".join(f"{c:+g}:{p:.3f}" for c, p in curve.items())
-        print(f"{s.name:28s} |v|={d.norm().item():6.2f} | {pretty}")
+        print(f"{s.name:28s} |v|={norm:6.2f} | {pretty}")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    path = out / f"caa_{args.specs}_L{args.layer}.json"
+    tag = "unit" if args.unit else "raw"
+    path = out / f"caa_{args.specs}_L{args.layer}_{tag}.json"
     path.write_text(json.dumps(
-        {"layer": args.layer, "coefs": args.coefs, "n_train": len(pos),
+        {"layer": args.layer, "coefs": args.coefs, "unit": args.unit, "n_train": len(pos),
          "n_val": len(data.val), "results": results}, indent=2))
     print("wrote", path)
 
