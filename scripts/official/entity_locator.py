@@ -9,8 +9,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 MODEL = "NousResearch/Llama-2-7b-chat-hf"
 DEV = "cuda"
-LAYERS = [6, 8, 10, 12, 14, 16]
-ALPHA = 8.0
+LAYERS = [8, 10, 12, 14]
+ALPHAS = [1.0, 2.0, 3.0, 4.0, 5.0]
 
 tok = AutoTokenizer.from_pretrained(MODEL)
 tok.pad_token = tok.eos_token
@@ -78,26 +78,30 @@ def clear():
 
 
 @torch.no_grad()
-def injection_rate(L, direction, alpha):
+def eval_steer(L, direction, alpha):
     if direction is not None:
         steer(L, direction, alpha)
-    hits, texts = 0, []
+    hits, distinct, texts = 0, [], []
     for s in range(0, len(NEUTRAL), 8):
         enc = tok([wrap(p) for p in NEUTRAL[s:s + 8]], return_tensors="pt", padding=True).to(DEV)
         gen = model.generate(**enc, max_new_tokens=30, do_sample=False, pad_token_id=tok.pad_token_id)
         for row in gen[:, enc.input_ids.shape[1]:]:
+            ids = row.tolist()
+            distinct.append(len(set(ids)) / max(len(ids), 1))     # 1=varied, low=degenerate
             t = tok.decode(row, skip_special_tokens=True).lower()
             texts.append(t)
             hits += int("golden gate" in t or "san francisco" in t)
     clear()
-    return hits / len(NEUTRAL), texts
+    return hits / len(NEUTRAL), float(np.mean(distinct)), texts
 
 
 dirs = harvest_mean(LAYERS)
-base, _ = injection_rate(0, None, 0.0)
-print(f"baseline injection (no steer) = {base:.2f}")
-print(f"=== mean-pool DoM injection by layer (alpha={ALPHA}) ===")
+print("||mean-pool DoM|| by layer: " + "  ".join(f"L{L}={np.linalg.norm(dirs[L]):.2f}" for L in LAYERS))
+base, base_d, _ = eval_steer(0, None, 0.0)
+print(f"baseline: injection={base:.2f}  distinct={base_d:.2f}\n")
+print(f"{'layer':>5}  {'alpha':>5}  {'inject':>6}  {'distinct':>8}  example")
 for L in LAYERS:
-    r, texts = injection_rate(L, dirs[L], ALPHA)
-    print(f"L{L:2d}: injection rate = {r:.2f}   e.g. {texts[0][:70]!r}", flush=True)
+    for a in ALPHAS:
+        r, d, texts = eval_steer(L, dirs[L], a)
+        print(f"L{L:>4}  {a:>5.1f}  {r:>6.2f}  {d:>8.2f}  {texts[0][:55]!r}", flush=True)
 print("LOCATOR_DONE")
